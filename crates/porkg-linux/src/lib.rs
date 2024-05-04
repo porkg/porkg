@@ -1,38 +1,38 @@
 mod clone;
 mod fs;
-
-use std::{
-    fmt::{Debug, Display},
-    path::Path,
-};
+mod net;
+mod proc;
+mod sandbox;
 
 use nix::errno::Errno;
-pub use nix::unistd::Pid;
-
-pub use clone::*;
-pub use fs::*;
+use private::{Syscall, NO_PATH};
+use std::fmt::{Debug, Display};
 use thiserror::Error;
 
-pub const NO_PATH: Option<&Path> = None::<&Path>;
-
-pub struct Syscall;
-
-pub(crate) mod private {
+#[doc(hidden)]
+pub mod private {
     use nix::errno::Errno;
     use std::fmt::Debug;
+    use std::path::Path;
+
+    pub use super::clone::*;
+    pub use super::fs::*;
+
+    pub struct Syscall;
+    pub const NO_PATH: Option<&Path> = None::<&Path>;
 
     pub trait ErrorKind: Clone + Debug {
         fn fmt(&self, err: Errno, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
     }
+
+    impl ErrorKind for () {
+        fn fmt(&self, err: Errno, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{err:?}: {err}")
+        }
+    }
 }
 
 pub type Result<T, E> = std::result::Result<T, Error<E>>;
-
-impl private::ErrorKind for () {
-    fn fmt(&self, err: Errno, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{err:?}: {err}")
-    }
-}
 
 #[derive(Debug, Clone, Error)]
 pub struct Error<K = ()>
@@ -55,6 +55,13 @@ where
     pub fn kind(&self) -> &K {
         &self.kind
     }
+
+    fn change_kind<T: private::ErrorKind>(&self, kind: T) -> Error<T> {
+        Error {
+            kind,
+            errno: self.errno,
+        }
+    }
 }
 
 impl<K> Error<K>
@@ -65,6 +72,13 @@ where
         Self {
             kind: Default::default(),
             errno,
+        }
+    }
+
+    fn from_any<E>(_: E) -> Self {
+        Self {
+            kind: Default::default(),
+            errno: Errno::UnknownErrno,
         }
     }
 }

@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
-use porkg_linux::{CloneFlags, CloneSyscall as _, Syscall};
+use porkg_linux::private::{CloneFlags, CloneSyscall as _, Syscall};
 
 mod common;
 

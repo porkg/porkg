@@ -16,6 +16,7 @@ use nix::{
 };
 
 pub use nix::unistd::Pid;
+use porkg_private::os::proc::IntoExitCode;
 
 #[derive(Debug, Clone, Default)]
 pub struct CloneError;
@@ -52,34 +53,6 @@ bitflags::bitflags! {
         const NEWNET = CloneF::CLONE_NEWNET.bits() as u64;
         #[doc(hidden)]
         const TEST_FALLBACK = 0x100000000;
-    }
-}
-
-/// A value that can be converted into an exit code.
-pub trait IntoExitCode {
-    /// Converts the current value into an exit code.
-    fn report(&self) -> i32;
-}
-
-impl<T, E: IntoExitCode> IntoExitCode for Result<T, E> {
-    fn report(&self) -> i32 {
-        match self {
-            Ok(_) => 0,
-            Err(v) => v.report(),
-        }
-    }
-}
-
-impl IntoExitCode for anyhow::Error {
-    fn report(&self) -> i32 {
-        tracing::error!(?self, "process failed");
-        -1
-    }
-}
-
-impl IntoExitCode for i32 {
-    fn report(&self) -> i32 {
-        *self
     }
 }
 

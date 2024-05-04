@@ -8,7 +8,7 @@ use nix::{
     sys::wait::{waitpid, WaitPidFlag, WaitStatus},
     unistd::ForkResult,
 };
-use porkg_linux::{CloneFlags, CloneSyscall as _, Pid, Syscall};
+use porkg_linux::private::{CloneFlags, CloneSyscall as _, Pid, Syscall};
 
 mod common;
 

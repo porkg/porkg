@@ -4,8 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+porkg-private.workspace = true
+
 thiserror.workspace = true
 anyhow.workspace = true
+bitflags.workspace = true
+tracing.workspace = true
+
+async-io.workspace = true
 
 nix = { workspace = true, features = [
 # Clone
@@ -20,14 +26,10 @@ nix = { workspace = true, features = [
 # User
 "user"
 ] }
-procfs = { workspace = true }
-
-bitflags.workspace = true
-tracing.workspace = true
-porkg-private.workspace = true
+procfs = { version = "0.16.0", default-features = false }
+uds = "0.4.2"
 
 [dev-dependencies]
 pretty_assertions.workspace = true
-ntest.workspace = true
 tracing-subscriber.workspace = true
 test-log = { workspace = true, features = [ "trace" ] }

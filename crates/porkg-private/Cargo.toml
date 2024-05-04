@@ -5,3 +5,19 @@ edition = "2021"
 
 [dependencies]
 tracing.workspace = true
+bitflags.workspace = true
+anyhow.workspace = true
+
+bytes.workspace = true
+async-io.workspace = true
+once_cell.workspace = true
+
+bincode.workspace = true
+serde = { workspace = true, features = ["derive"] }
+
+nix = { workspace = true, features = [
+# proc
+"process",
+"signal"
+] }
+uds.workspace = true

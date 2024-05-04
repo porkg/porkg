@@ -15,7 +15,7 @@ use nix::{
     sys::wait::{waitpid, WaitPidFlag, WaitStatus},
     unistd::{setresgid, setresuid, Gid, Uid},
 };
-use porkg_linux::{CloneFlags, CloneSyscall as _, Syscall};
+use porkg_linux::private::{CloneFlags, CloneSyscall as _, Syscall};
 use tracing::{subscriber, Level};
 
 pub fn setup() {
