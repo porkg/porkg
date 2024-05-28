@@ -82,7 +82,7 @@ impl<T> Clone for PoolEntry<T> {
 
 struct PoolState<'a, T, const CAPACITY: usize> {
     skip: AtomicUsize,
-    entries: Box<[PoolEntry<T>]>,
+    entries: Box<[PoolEntry<T>; CAPACITY]>,
     create: &'a dyn Fn() -> T,
     return_hook: Option<&'a dyn Fn(T) -> Option<T>>,
     take_hook: Option<&'a dyn Fn(T) -> T>,
@@ -249,22 +249,6 @@ impl<'a, T, const CAPACITY: usize> Drop for PoolState<'a, T, CAPACITY> {
 ///
 /// * `CAPACITY`: The capacity of the pool.
 /// * `T`: The type of object in the pool.
-///
-/// # Examples
-///
-/// ```
-/// use nck_io::pool::Pool;
-/// static BUFFER_POOL: Pool<16, Vec<u8>> = Pool::new(&|| Vec::new()).with_return_hook(&|mut v| {
-///    if v.capacity() <= 4096 {
-///        v.clear();
-///        Some(v)
-///    } else {
-///        None
-///    }
-/// });
-/// let buffer = BUFFER_POOL.take();
-/// // `buffer` will be returned to the pool when dropped.
-/// ```
 pub struct Pool<'a, const CAPACITY: usize, T> {
     state: PoolState<'a, T, CAPACITY>,
 }
@@ -278,7 +262,10 @@ impl<'a, const CAPACITY: usize, T> Pool<'a, CAPACITY, T> {
     pub fn new(create: &'a (impl Send + Sync + Fn() -> T)) -> Self {
         let state = PoolState {
             skip: AtomicUsize::new(0),
-            entries: vec![PoolEntry::default(); CAPACITY].into_boxed_slice(),
+            entries: vec![PoolEntry::default(); CAPACITY]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap_or_else(|_| unreachable!()),
             create,
             return_hook: None,
             take_hook: None,

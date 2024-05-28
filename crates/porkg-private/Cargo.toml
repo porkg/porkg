@@ -21,3 +21,9 @@ nix = { workspace = true, features = [
 "signal"
 ] }
 uds.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+tracing-subscriber.workspace = true
+test-log = { workspace = true, features = [ "trace" ] }
+signal-hook = "0.3.17"

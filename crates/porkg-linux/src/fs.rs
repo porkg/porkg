@@ -11,10 +11,11 @@ use procfs::process::MountOptFields;
 use std::{
     ffi::OsStr,
     os::unix::prelude::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
-    path::Path,
+    path::{Path, PathBuf},
 };
+use thiserror::Error;
 
-use crate::{Error, Syscall, NO_PATH};
+use crate::{Syscall, NO_PATH};
 
 #[inline(always)]
 pub(crate) fn make_owned_fd<F: IntoRawFd, E>(
@@ -96,17 +97,12 @@ impl From<DeviceKind> for u64 {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct MountError;
-
-impl crate::private::ErrorKind for MountError {
-    fn fmt(&self, err: Errno, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if err != nix::Error::UnknownErrno {
-            write!(f, "failed to mount: {0}", err)
-        } else {
-            write!(f, "failed to mount")
-        }
-    }
+#[derive(Debug, Clone, Error)]
+#[error("failed to mount {path:?}: {source}")]
+pub struct MountError {
+    path: PathBuf,
+    #[source]
+    source: Errno,
 }
 
 bitflags::bitflags! {
@@ -139,17 +135,12 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct BindError;
-
-impl crate::private::ErrorKind for BindError {
-    fn fmt(&self, err: Errno, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if err != nix::Error::UnknownErrno {
-            write!(f, "failed to bind mount: {0}", err)
-        } else {
-            write!(f, "failed to bind mount")
-        }
-    }
+#[derive(Debug, Clone, Error)]
+#[error("failed to bind mount {path:?}: {source}")]
+pub struct BindError {
+    path: PathBuf,
+    #[source]
+    source: Errno,
 }
 
 bitflags::bitflags! {
@@ -162,17 +153,12 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct UnmountError;
-
-impl crate::private::ErrorKind for UnmountError {
-    fn fmt(&self, err: Errno, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if err != nix::Error::UnknownErrno {
-            write!(f, "failed to unmount: {0}", err)
-        } else {
-            write!(f, "failed to unmount")
-        }
-    }
+#[derive(Debug, Clone, Error)]
+#[error("failed to unmount {path:?}: {source}")]
+pub struct UnmountError {
+    path: PathBuf,
+    #[source]
+    source: Errno,
 }
 
 bitflags::bitflags! {
@@ -190,17 +176,12 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct PivotError;
-
-impl crate::private::ErrorKind for PivotError {
-    fn fmt(&self, err: Errno, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if err != nix::Error::UnknownErrno {
-            write!(f, "failed to pivot to new root: {0}", err)
-        } else {
-            write!(f, "failed to pivot to new root")
-        }
-    }
+#[derive(Debug, Clone, Error)]
+#[error("failed to pivot to new root at {path:?}: {source}")]
+pub struct PivotError {
+    path: PathBuf,
+    #[source]
+    source: Errno,
 }
 
 bitflags::bitflags! {
@@ -218,17 +199,17 @@ pub trait FsSyscall {
         kind: Option<P2>,
         flags: MountFlags,
         options: Option<P3>,
-    ) -> super::Result<(), MountError>;
+    ) -> Result<(), MountError>;
 
     fn bind(
         source: impl AsRef<Path>,
         target: impl AsRef<Path>,
         flags: BindFlags,
-    ) -> super::Result<(), BindError>;
+    ) -> Result<(), BindError>;
 
-    fn unmount(path: impl AsRef<Path>, flags: UnmountFlags) -> super::Result<(), UnmountError>;
+    fn unmount(path: impl AsRef<Path>, flags: UnmountFlags) -> Result<(), UnmountError>;
 
-    fn pivot(new_root: impl AsRef<Path>) -> super::Result<(), PivotError>;
+    fn pivot(new_root: impl AsRef<Path>) -> Result<(), PivotError>;
 }
 
 impl FsSyscall for Syscall {
@@ -245,7 +226,7 @@ impl FsSyscall for Syscall {
         kind: Option<P2>,
         flags: MountFlags,
         options: Option<P3>,
-    ) -> super::Result<(), MountError> {
+    ) -> Result<(), MountError> {
         let source = source.as_ref().map(AsRef::as_ref);
         let target = target.as_ref();
         let kind = kind.as_ref().map(AsRef::as_ref);
@@ -255,27 +236,33 @@ impl FsSyscall for Syscall {
         nix::mount::mount(source, target, kind, flags, options)
             .inspect_err(|_| tracing::debug!("failed to mount"))
             .inspect(|_| tracing::trace!("created mount"))
-            .map_err(Error::from_nix)
+            .map_err(|source| MountError {
+                path: target.to_path_buf(),
+                source,
+            })
     }
 
     #[tracing::instrument(skip_all, fields(
         path = ?path.as_ref(),
         ?flags,
     ), err(level = "debug"))]
-    fn unmount(path: impl AsRef<Path>, flags: UnmountFlags) -> crate::Result<(), UnmountError> {
+    fn unmount(path: impl AsRef<Path>, flags: UnmountFlags) -> Result<(), UnmountError> {
         let path = path.as_ref();
         let flags = MntFlags::from_bits_truncate(flags.bits() as i32);
 
         nix::mount::umount2(path, flags)
             .inspect_err(|_| tracing::debug!("failed to unmount"))
             .inspect(|_| tracing::trace!("unmounted"))
-            .map_err(Error::from_nix)
+            .map_err(|source| UnmountError {
+                path: path.to_path_buf(),
+                source,
+            })
     }
 
     #[tracing::instrument(skip_all, fields(
         path = ?new_root.as_ref(),
     ), err(level = "debug"))]
-    fn pivot(new_root: impl AsRef<Path>) -> crate::Result<(), PivotError> {
+    fn pivot(new_root: impl AsRef<Path>) -> Result<(), PivotError> {
         let new_root = new_root.as_ref();
 
         match has_existing_shared_mount(new_root) {
@@ -290,7 +277,10 @@ impl FsSyscall for Syscall {
                 )
                 .inspect_err(|_| tracing::debug!("failed to make the existing mount private"))
                 .inspect(|_| tracing::trace!("made the existing mount private"))
-                .map_err(Error::from_nix)?;
+                .map_err(|source| PivotError {
+                    path: new_root.to_path_buf(),
+                    source,
+                })?;
             }
             None => {
                 tracing::trace!("no mount exists at the path");
@@ -303,7 +293,10 @@ impl FsSyscall for Syscall {
                 )
                 .inspect_err(|_| tracing::debug!("bound the path to itself"))
                 .inspect(|_| tracing::trace!("bound the path to itself"))
-                .map_err(Error::from_nix)?;
+                .map_err(|source| PivotError {
+                    path: new_root.to_path_buf(),
+                    source,
+                })?;
             }
             _ => tracing::trace!("private mount exists at the path"),
         }
@@ -317,7 +310,10 @@ impl FsSyscall for Syscall {
         })
         .inspect_err(|_| tracing::debug!("failed to open new root directory"))
         .inspect(|_| tracing::trace!("opened new root directory"))
-        .map_err(Error::from_nix)?;
+        .map_err(|source| PivotError {
+            path: new_root.to_path_buf(),
+            source,
+        })?;
 
         // make the given path as the root directory for the container
         // see https://man7.org/linux/man-pages/man2/pivot_root.2.html, specially the notes
@@ -330,7 +326,10 @@ impl FsSyscall for Syscall {
         nix::unistd::pivot_root(new_root, new_root)
             .inspect_err(|_| tracing::debug!("failed to pivot to new path"))
             .inspect(|_| tracing::trace!("pivoted to new path"))
-            .map_err(Error::from_nix)?;
+            .map_err(|source| PivotError {
+                path: new_root.to_path_buf(),
+                source,
+            })?;
 
         // Make the original root directory rslave to avoid propagating unmount event to the host mount namespace.
         // We should use MS_SLAVE not MS_PRIVATE according to https://github.com/opencontainers/runc/pull/1500.
@@ -343,7 +342,10 @@ impl FsSyscall for Syscall {
         )
         .inspect_err(|_| tracing::debug!("failed to re-mount root"))
         .inspect(|_| tracing::trace!("re-mounted the root directory"))
-        .map_err(Error::from_nix)?;
+        .map_err(|source| PivotError {
+            path: new_root.to_path_buf(),
+            source,
+        })?;
 
         // Unmount the original root directory which was stacked on top of new root directory
         // MNT_DETACH makes the mount point unavailable to new accesses, but waits till the original mount point
@@ -352,13 +354,19 @@ impl FsSyscall for Syscall {
         nix::mount::umount2("/", MntFlags::MNT_DETACH)
             .inspect_err(|_| tracing::debug!("failed to unmount original root"))
             .inspect(|_| tracing::trace!("unmounted original root"))
-            .map_err(Error::from_nix)?;
+            .map_err(|source| PivotError {
+                path: new_root.to_path_buf(),
+                source,
+            })?;
 
         // Change directory to the new root
         nix::unistd::fchdir(newroot.as_raw_fd())
             .inspect_err(|_| tracing::debug!("failed to chdir to the new root"))
             .inspect(|_| tracing::trace!("changed current directory to new root"))
-            .map_err(Error::from_nix)?;
+            .map_err(|source| PivotError {
+                path: new_root.to_path_buf(),
+                source,
+            })?;
 
         Ok(())
     }
@@ -372,7 +380,7 @@ impl FsSyscall for Syscall {
         source: impl AsRef<Path>,
         target: impl AsRef<Path>,
         flags: BindFlags,
-    ) -> crate::Result<(), BindError> {
+    ) -> Result<(), BindError> {
         let source = source.as_ref();
         let target = target.as_ref();
         let mut mount_flags = MsFlags::MS_BIND;
@@ -384,7 +392,10 @@ impl FsSyscall for Syscall {
         nix::mount::mount(Some(source), target, NO_PATH, mount_flags, NO_PATH)
             .inspect_err(|error| tracing::debug!(?error, "failed to bind mount"))
             .inspect(|_| tracing::trace!("created bind mount"))
-            .map_err(Error::from_nix)?;
+            .map_err(|source| BindError {
+                path: target.to_path_buf(),
+                source,
+            })?;
 
         if flags.contains(BindFlags::READ_ONLY) {
             nix::mount::mount(
@@ -396,7 +407,10 @@ impl FsSyscall for Syscall {
             )
             .inspect_err(|error| tracing::debug!(?error, "failed to make mount read-only"))
             .inspect(|_| tracing::trace!("made bind mount read-only"))
-            .map_err(Error::from_nix)?;
+            .map_err(|source| BindError {
+                path: target.to_path_buf(),
+                source,
+            })?;
         }
 
         Ok(())

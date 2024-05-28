@@ -6,7 +6,7 @@ use std::{
     num::NonZeroUsize,
 };
 
-use crate::{Error, Syscall};
+use crate::Syscall;
 
 use nix::{
     errno::Errno,
@@ -17,18 +17,13 @@ use nix::{
 
 pub use nix::unistd::Pid;
 use porkg_private::os::proc::IntoExitCode;
+use thiserror::Error;
 
-#[derive(Debug, Clone, Default)]
-pub struct CloneError;
-
-impl crate::private::ErrorKind for CloneError {
-    fn fmt(&self, err: Errno, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if err != nix::Error::UnknownErrno {
-            write!(f, "failed to clone process: {0}", err)
-        } else {
-            write!(f, "failed to clone process")
-        }
-    }
+#[derive(Debug, Clone, Error)]
+#[error("failed to clone process: {source}")]
+pub struct CloneError {
+    #[source]
+    source: Errno,
 }
 
 bitflags::bitflags! {
@@ -62,7 +57,7 @@ pub trait CloneSyscall {
     fn clone<R: IntoExitCode + std::fmt::Debug, F: 'static + FnMut() -> R>(
         callback: Box<F>,
         flags: CloneFlags,
-    ) -> super::Result<Pid, CloneError>;
+    ) -> Result<Pid, CloneError>;
 }
 
 impl CloneSyscall for Syscall {
@@ -70,7 +65,7 @@ impl CloneSyscall for Syscall {
     fn clone<R: IntoExitCode + std::fmt::Debug, F: 'static + FnMut() -> R>(
         mut callback: Box<F>,
         flags: CloneFlags,
-    ) -> super::Result<Pid, CloneError> {
+    ) -> Result<Pid, CloneError> {
         let exit_signal = if flags.contains(CloneFlags::PARENT) {
             0
         } else {
@@ -81,11 +76,12 @@ impl CloneSyscall for Syscall {
             // For now, we decide to only fallback on ENOSYS
             Err(nix::Error::ENOSYS) => {
                 let flags = flags.difference(CloneFlags::TEST_FALLBACK).bits();
-                let pid = clone_fallback(callback, flags, exit_signal).map_err(Error::from_nix)?;
+                let pid = clone_fallback(callback, flags, exit_signal)
+                    .map_err(|source| CloneError { source })?;
 
                 Ok(pid)
             }
-            Err(err) => Err(Error::from_nix(err)),
+            Err(err) => Err(CloneError { source: err }),
         }
     }
 }

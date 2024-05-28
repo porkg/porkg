@@ -100,17 +100,20 @@ impl ChildProcess {
         let flags = flags | WaitPidFlag::__WALL;
 
         match waitpid(pid, Some(flags)) {
-            Ok(v) => match v {
-                nix::sys::wait::WaitStatus::Exited(_, _) => Ok(()),
-                nix::sys::wait::WaitStatus::Signaled(_, _, _) => Ok(()),
-                nix::sys::wait::WaitStatus::Stopped(_, _) => Ok(()),
-                nix::sys::wait::WaitStatus::PtraceEvent(_, _, _)
-                | nix::sys::wait::WaitStatus::Continued(_)
-                | nix::sys::wait::WaitStatus::StillAlive
-                | nix::sys::wait::WaitStatus::PtraceSyscall(_) => {
-                    Err(std::io::ErrorKind::WouldBlock.into())
+            Ok(result) => {
+                tracing::trace!(?pid, ?result, "process polled");
+                match result {
+                    nix::sys::wait::WaitStatus::Exited(_, _) => Ok(()),
+                    nix::sys::wait::WaitStatus::Signaled(_, _, _) => Ok(()),
+                    nix::sys::wait::WaitStatus::Stopped(_, _) => Ok(()),
+                    nix::sys::wait::WaitStatus::PtraceEvent(_, _, _)
+                    | nix::sys::wait::WaitStatus::Continued(_)
+                    | nix::sys::wait::WaitStatus::StillAlive
+                    | nix::sys::wait::WaitStatus::PtraceSyscall(_) => {
+                        Err(std::io::ErrorKind::WouldBlock.into())
+                    }
                 }
-            },
+            }
             Err(e) => match e {
                 nix::Error::ECHILD => Ok(()),
                 other => Err(std::io::Error::from_raw_os_error(other as i32)),
@@ -144,7 +147,7 @@ impl ChildProcess {
             return Ok(());
         }
 
-        tracing::trace!("waiting for process to exit");
+        tracing::trace!(?pid, "waiting for process to exit");
         let end = Instant::now().add(CHILD_DROP_WAIT);
 
         loop {
@@ -165,8 +168,29 @@ impl ChildProcess {
             }
         }
 
-        tracing::warn!("process has taken too long to exit, sending SIGKILL",);
+        tracing::warn!(?pid, "process has taken too long to exit, sending SIGKILL");
         Self::kill(pid, Signal::SIGKILL)?;
+
+        let end = Instant::now().add(Duration::from_secs(1));
+        loop {
+            match Self::poll(pid) {
+                Ok(_) => return Ok(()),
+                Err(err) => match err.kind() {
+                    std::io::ErrorKind::WouldBlock if end > Instant::now() => {
+                        std::thread::sleep(Duration::from_millis(15))
+                    }
+                    std::io::ErrorKind::WouldBlock => break,
+                    _ => {
+                        return Err(err
+                            .raw_os_error()
+                            .map(nix::Error::from_raw)
+                            .unwrap_or(nix::Error::EFAULT))
+                    }
+                },
+            }
+        }
+
+        tracing::warn!(?pid, "process has not responded to SIGKILL");
         Ok(())
     }
 }
