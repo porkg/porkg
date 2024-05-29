@@ -15,7 +15,6 @@ mod owned_pooled_item;
 mod pooled_item;
 use bytes::BytesMut;
 use nix::unistd::gettid;
-use once_cell::sync::Lazy;
 pub use owned_pooled_item::OwnedPooled;
 pub use pooled_item::Pooled;
 
@@ -25,7 +24,7 @@ const MAX_SINGLE_BUFFER: usize = 16 * MB;
 const DEFAULT_BUFFER_LEN: usize = 16384;
 
 static CURRENT_SIZE: AtomicUsize = AtomicUsize::new(0);
-pub static BUFFER_POOL: Lazy<Pool<'static, 128, BytesMut>> = Lazy::new(|| {
+pub static BUFFER_POOL: Pool<'static, 128, BytesMut> =
     Pool::new(&|| BytesMut::with_capacity(DEFAULT_BUFFER_LEN))
         .with_max_search(16)
         .with_take_hook(&|v| {
@@ -45,8 +44,7 @@ pub static BUFFER_POOL: Lazy<Pool<'static, 128, BytesMut>> = Lazy::new(|| {
                 v.clear();
                 Some(v)
             }
-        })
-});
+        });
 
 const EMPTY: u8 = 0;
 const WRITING: u8 = 1;
@@ -65,8 +63,8 @@ struct PoolEntry<T> {
     state: AtomicU8,
 }
 
-impl<T> Default for PoolEntry<T> {
-    fn default() -> Self {
+impl<T> PoolEntry<T> {
+    const fn empty() -> Self {
         Self {
             item: UnsafeCell::new(MaybeUninit::uninit()),
             state: AtomicU8::new(0),
@@ -74,15 +72,9 @@ impl<T> Default for PoolEntry<T> {
     }
 }
 
-impl<T> Clone for PoolEntry<T> {
-    fn clone(&self) -> Self {
-        Default::default()
-    }
-}
-
 struct PoolState<'a, T, const CAPACITY: usize> {
     skip: AtomicUsize,
-    entries: Box<[PoolEntry<T>; CAPACITY]>,
+    entries: [PoolEntry<T>; CAPACITY],
     create: &'a dyn Fn() -> T,
     return_hook: Option<&'a dyn Fn(T) -> Option<T>>,
     take_hook: Option<&'a dyn Fn(T) -> T>,
@@ -259,28 +251,16 @@ impl<'a, const CAPACITY: usize, T> Pool<'a, CAPACITY, T> {
     /// # Parameters
     ///
     /// * `create`: A factory for `T`.
-    pub fn new(create: &'a (impl Send + Sync + Fn() -> T)) -> Self {
+    pub const fn new(create: &'a (impl Send + Sync + Fn() -> T)) -> Self {
         let state = PoolState {
             skip: AtomicUsize::new(0),
-            entries: vec![PoolEntry::default(); CAPACITY]
-                .into_boxed_slice()
-                .try_into()
-                .unwrap_or_else(|_| unreachable!()),
+            entries: [const { PoolEntry::empty() }; CAPACITY],
             create,
             return_hook: None,
             take_hook: None,
             max_loop: CAPACITY,
         };
         Self { state }
-    }
-
-    /// Creates a new `Pool` wrapped in a `Lazy`.
-    ///
-    /// # Parameters
-    ///
-    /// * `create`: A factory for `T`.
-    pub fn new_lazy(create: &'a (impl Send + Sync + Fn() -> T)) -> Lazy<Self, impl Fn() -> Self> {
-        Lazy::new(|| Self::new(create))
     }
 
     /// Sets a hook that can filter and mutate values as they are being returned to the pool.

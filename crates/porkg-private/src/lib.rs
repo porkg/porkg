@@ -1,3 +1,5 @@
+#![feature(inline_const)]
+
 pub mod debug;
 pub mod io;
 pub mod mem;
