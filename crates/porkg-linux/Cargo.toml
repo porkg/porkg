@@ -12,6 +12,7 @@ bitflags.workspace = true
 tracing.workspace = true
 
 async-io.workspace = true
+bytes.workspace = true
 
 nix = { workspace = true, features = [
 # Clone

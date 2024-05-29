@@ -30,11 +30,13 @@ impl SandboxOptions {
     }
 }
 
-pub trait SandboxTask {
+pub trait SandboxTask: crate::ser::Serialize + crate::ser::Deserialize {
     type ExecuteError: IntoExitCode + std::error::Error;
     fn execute() -> impl Send + Future<Output = Result<(), Self::ExecuteError>>;
 
-    type CreateSandboxOptionsError: IntoExitCode + std::error::Error;
+    type CreateSandboxOptionsError: std::error::Error
+        + crate::ser::Serialize
+        + crate::ser::Deserialize;
     fn create_sandbox_options(
     ) -> impl Send + Future<Output = Result<SandboxOptions, Self::CreateSandboxOptionsError>>;
 }
