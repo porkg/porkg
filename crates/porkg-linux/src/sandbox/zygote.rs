@@ -1,26 +1,24 @@
 use std::{
+    io::{Read as _, Write as _},
     marker::PhantomData,
-    mem::size_of,
-    os::{fd::OwnedFd, unix::net::UnixStream},
+    os::unix::{net::UnixStream, prelude::RawFd},
 };
 
+use anyhow::Context as _;
 use async_io::Async;
-use bytes::BufMut as _;
+use nix::unistd::{setresgid, setresuid};
 use porkg_private::{
-    io::{DomainSocketAsync as _, LimitExt as _},
-    mem::BUFFER_POOL,
+    io::{DomainSocket, DomainSocketAsync as _, DomainSocketAsyncExt, SocketMessageError},
     os::proc::ChildProcess,
-    sandbox::SandboxTask,
-    ser::{serialize, serialize_with_prefix},
+    sandbox::{SandboxOptions, SandboxTask},
 };
 use thiserror::Error;
 
 use crate::{
     clone::{CloneError, CloneFlags, CloneSyscall},
     private::Syscall,
+    proc::{IdMapping, IdMappingTools, ProcSyscall},
 };
-
-const USIZE_SIZE: usize = size_of::<usize>();
 
 #[derive(Debug, Error)]
 enum CreateZygoteErrorKind {
@@ -58,6 +56,15 @@ enum SpawnZygoteErrorKind {
     Serialization(#[from] porkg_private::ser::Error),
 }
 
+impl From<SocketMessageError> for SpawnZygoteErrorKind {
+    fn from(value: SocketMessageError) -> Self {
+        match value {
+            SocketMessageError::IO(i) => Self::IO(i),
+            SocketMessageError::Serialize(i) => Self::Serialization(i),
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 #[error("failed to spawn a process from the zygote: {source}")]
 pub struct SpawnZygoteError {
@@ -66,13 +73,15 @@ pub struct SpawnZygoteError {
     source: SpawnZygoteErrorKind,
 }
 
-pub struct Zygote<S: CloneSyscall = Syscall> {
+const CMD_START: u8 = 0x1;
+
+pub struct Zygote<T: SandboxTask, S: CloneSyscall + ProcSyscall = Syscall> {
     stream: Async<UnixStream>,
     proc: ChildProcess,
-    _p: PhantomData<S>,
+    _p: PhantomData<(T, S)>,
 }
 
-impl<S: CloneSyscall> Zygote<S> {
+impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> Zygote<T, S> {
     #[tracing::instrument]
     pub fn create_zygote() -> Result<(UnixStream, ChildProcess), CreateZygoteError> {
         let (parent, child) = UnixStream::pair()
@@ -88,7 +97,7 @@ impl<S: CloneSyscall> Zygote<S> {
             })?;
 
         let cb = Box::new(move || match child.try_clone() {
-            Ok(child) => Ok(()),
+            Ok(child) => zygote_main::<T, S>(child),
             Err(e) => Err(anyhow::anyhow!("failed to clone child socket: {0}", e)),
         });
 
@@ -116,16 +125,90 @@ impl<S: CloneSyscall> Zygote<S> {
         })
     }
 
-    pub async fn spawn_async<T: SandboxTask>(&self, task: T) -> Result<(), SpawnZygoteError> {
-        let mut fds = Vec::<OwnedFd>::new();
-        let mut buf = BUFFER_POOL.take();
-
-        serialize_with_prefix(&task, &mut buf).map_err(Into::<SpawnZygoteErrorKind>::into)?;
+    pub async fn spawn_async(&self, task: T, fds: &[RawFd]) -> Result<(), SpawnZygoteError> {
         self.stream
-            .send_all(buf.as_mut(), &[])
+            .send_all(&mut &[CMD_START][..], &[])
             .await
-            .map_err(Into::<SpawnZygoteErrorKind>::into)?;
+            .inspect_err(|error| tracing::trace!(?error, "failed to send start message"))
+            .map_err(SpawnZygoteErrorKind::from)?;
+        self.stream
+            .send_message(&task, fds)
+            .await
+            .inspect(|_| tracing::trace!("sent start message"))
+            .inspect_err(|error| tracing::trace!(?error, "failed to send start message"))
+            .map_err(SpawnZygoteErrorKind::from)?;
 
         Ok(())
     }
+}
+
+fn zygote_main<T: SandboxTask, S: CloneSyscall + ProcSyscall>(
+    host: UnixStream,
+) -> anyhow::Result<()> {
+    loop {
+        let mut cmd_buf = [0u8; 1];
+        let mut fds = Vec::new();
+        let tools = S::find_tools();
+
+        host.recv_exact(&mut &mut cmd_buf[..], &mut fds)
+            .context("while reading command from host")?;
+
+        fds.clear();
+        match cmd_buf[0] {
+            CMD_START => {
+                tracing::trace!("received start message");
+                let task: T = host
+                    .recv_message(&mut fds)
+                    .context("while reading the task from the host")?;
+                let opts = task.create_sandbox_options();
+                start_supervisor::<T, S>(task, opts, tools.clone())?;
+            }
+            other => anyhow::bail!("unknown command {other}"),
+        }
+    }
+}
+
+fn start_supervisor<T: SandboxTask, S: CloneSyscall + ProcSyscall>(
+    task: T,
+    opts: SandboxOptions,
+    tools: IdMappingTools,
+) -> anyhow::Result<()> {
+    let (mut host, child) =
+        UnixStream::pair().context("while creating uds for supervisor communication")?;
+
+    let cb =
+        Box::new(move || supervisor_main::<T, S>(&task, opts.clone(), child.try_clone().unwrap()));
+
+    let pid = S::clone(
+        cb,
+        CloneFlags::NEWPID | CloneFlags::NEWNS | CloneFlags::NEWUSER,
+    )?;
+
+    S::write_mappings(
+        Some(pid),
+        [IdMapping::current_user_to_root()],
+        [IdMapping::current_group_to_root()],
+        tools,
+    )
+    .inspect(|_| tracing::trace!(?pid, "wrote id mappings"))?;
+
+    host.write_all(&[0x01u8][..])?;
+
+    Ok(())
+}
+
+fn supervisor_main<T: SandboxTask, S: CloneSyscall>(
+    task: &T,
+    opts: SandboxOptions,
+    mut host: UnixStream,
+) -> anyhow::Result<()> {
+    let mut buf = [0u8; 1];
+
+    host.read_exact(&mut buf)?;
+    setresuid(opts.sandbox_uid(), opts.sandbox_uid(), opts.sandbox_uid())?;
+    setresgid(opts.sandbox_gid(), opts.sandbox_gid(), opts.sandbox_gid())?;
+
+    task.execute(&[]).unwrap();
+
+    Ok(())
 }

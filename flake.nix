@@ -33,7 +33,7 @@
         packages.default = outputs.nip.packages.release;
         devShells.default = outputs.porkg.devShell.overrideAttrs (old: {
           packages = with pkgs; (old.packages or []) ++ [cargo-expand gdb cargo-udeps curl jq zstd just];
-          RUST_LOG = "trace";
+          RUST_LOG = "trace,async_io=info,polling=info,async_std=info";
           shellHook = ''
             declare -a parts
             try_find() {

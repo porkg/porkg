@@ -8,7 +8,7 @@ porkg-private.workspace = true
 
 thiserror.workspace = true
 anyhow.workspace = true
-bitflags.workspace = true
+bitflags = { workspace = true, features = [ "serde" ] }
 tracing.workspace = true
 
 async-io.workspace = true
@@ -27,8 +27,10 @@ nix = { workspace = true, features = [
 # User
 "user"
 ] }
-procfs = { version = "0.16.0", default-features = false }
-uds = "0.4.2"
+procfs.workspace = true
+uds.workspace = true
+caps.workspace = true
+which.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true

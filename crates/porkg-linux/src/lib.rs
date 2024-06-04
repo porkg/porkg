@@ -1,7 +1,7 @@
 mod clone;
 mod fs;
 mod proc;
-mod sandbox;
+pub mod sandbox;
 
 use private::{Syscall, NO_PATH};
 

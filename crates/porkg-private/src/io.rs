@@ -215,3 +215,175 @@ impl DomainSocketAsync for Async<UnixStream> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::os::{fd::AsRawFd as _, unix::net::UnixStream};
+
+    use async_io::Async;
+    use pretty_assertions::assert_eq;
+    use serde::{Deserialize, Serialize};
+
+    use crate::io::DomainSocketAsyncExt as _;
+
+    use super::DomainSocket;
+
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct SomeMessage {
+        value: i32,
+    }
+
+    #[test]
+    pub fn send_recv_message() {
+        let (a, b) = UnixStream::pair().unwrap();
+        let msg = SomeMessage { value: 42 };
+
+        a.send_message(&msg, &[]).unwrap();
+
+        let mut fds = Vec::new();
+        let r: SomeMessage = b.recv_message(&mut fds).unwrap();
+
+        assert_eq!(msg, r);
+        assert!(fds.is_empty());
+    }
+
+    #[test]
+    pub fn send_recv_message_fds() {
+        let (c, d) = UnixStream::pair().unwrap();
+        let (a, b) = UnixStream::pair().unwrap();
+
+        let msg = SomeMessage { value: 42 };
+
+        a.send_message(&msg, &[c.as_raw_fd()]).unwrap();
+        drop(c);
+
+        let mut fds = Vec::new();
+        let r: SomeMessage = b.recv_message(&mut fds).unwrap();
+
+        assert_eq!(msg, r);
+
+        let c = fds.into_iter().next().unwrap();
+        let c: UnixStream = c.into();
+
+        c.send_message(&msg, &[]).unwrap();
+
+        let mut fds = Vec::new();
+        let r: SomeMessage = d.recv_message(&mut fds).unwrap();
+
+        assert_eq!(msg, r);
+    }
+
+    #[test]
+    pub fn send_recv_message_fds_many() {
+        let (c, d) = UnixStream::pair().unwrap();
+        let (a, b) = UnixStream::pair().unwrap();
+
+        let msg = SomeMessage { value: 42 };
+
+        a.send_message(&msg, &[c.as_raw_fd()]).unwrap();
+        a.send_message(&msg, &[c.as_raw_fd()]).unwrap();
+        drop(c);
+
+        let mut fds = Vec::new();
+        let r: SomeMessage = b.recv_message(&mut fds).unwrap();
+
+        assert_eq!(msg, r);
+        assert_eq!(1, fds.len());
+
+        let c = fds.into_iter().next().unwrap();
+        let c: UnixStream = c.into();
+
+        c.send_message(&msg, &[]).unwrap();
+
+        let mut fds = Vec::new();
+        let r: SomeMessage = d.recv_message(&mut fds).unwrap();
+
+        assert_eq!(msg, r);
+    }
+
+    #[test]
+    pub fn async_send_recv_message() {
+        async_io::block_on(async {
+            let (a, b) = UnixStream::pair().unwrap();
+            let a = Async::new(a).unwrap();
+            let b = Async::new(b).unwrap();
+            let msg = SomeMessage { value: 42 };
+
+            a.send_message(&msg, &[]).await.unwrap();
+
+            let mut fds = Vec::new();
+            let r: SomeMessage = b.recv_message(&mut fds).await.unwrap();
+
+            assert_eq!(msg, r);
+            assert!(fds.is_empty());
+        });
+    }
+
+    #[test]
+    pub fn async_send_recv_message_fds() {
+        async_io::block_on(async {
+            let (c, d) = UnixStream::pair().unwrap();
+            let (a, b) = UnixStream::pair().unwrap();
+            let a = Async::new(a).unwrap();
+            let b = Async::new(b).unwrap();
+            let c = Async::new(c).unwrap();
+            let d = Async::new(d).unwrap();
+
+            let msg = SomeMessage { value: 42 };
+
+            a.send_message(&msg, &[c.as_raw_fd()]).await.unwrap();
+            drop(c);
+
+            let mut fds = Vec::new();
+            let r: SomeMessage = b.recv_message(&mut fds).await.unwrap();
+
+            assert_eq!(msg, r);
+
+            let c = fds.into_iter().next().unwrap();
+            let c: UnixStream = c.into();
+            let c = Async::new(c).unwrap();
+
+            c.send_message(&msg, &[]).await.unwrap();
+
+            let mut fds = Vec::new();
+            let r: SomeMessage = d.recv_message(&mut fds).await.unwrap();
+
+            assert_eq!(msg, r);
+        });
+    }
+
+    #[test]
+    pub fn async_send_recv_message_fds_many() {
+        async_io::block_on(async {
+            let (c, d) = UnixStream::pair().unwrap();
+            let (a, b) = UnixStream::pair().unwrap();
+            let a = Async::new(a).unwrap();
+            let b = Async::new(b).unwrap();
+            let c = Async::new(c).unwrap();
+            let d = Async::new(d).unwrap();
+
+            let msg = SomeMessage { value: 42 };
+
+            a.send_message(&msg, &[c.as_raw_fd()]).await.unwrap();
+            a.send_message(&msg, &[c.as_raw_fd()]).await.unwrap();
+            drop(c);
+
+            let mut fds = Vec::new();
+            let r: SomeMessage = b.recv_message(&mut fds).await.unwrap();
+
+            assert_eq!(msg, r);
+            assert_eq!(1, fds.len());
+
+            let c = fds.into_iter().next().unwrap();
+            let c: UnixStream = c.into();
+            let c = Async::new(c).unwrap();
+
+            c.send_message(&msg, &[]).await.unwrap();
+
+            let mut fds = Vec::new();
+            let r: SomeMessage = d.recv_message(&mut fds).await.unwrap();
+
+            assert_eq!(msg, r);
+        });
+    }
+}

@@ -1,4 +1,6 @@
-use std::future::Future;
+use std::{future::Future, os::fd::OwnedFd};
+
+use nix::unistd::{Gid, Uid};
 
 use crate::os::proc::IntoExitCode;
 
@@ -13,11 +15,21 @@ bitflags::bitflags! {
 #[derive(Default, Debug, Clone, PartialEq, Hash)]
 pub struct SandboxOptions {
     flags: SandboxFlags,
+    sandbox_uid: u32,
+    sandbox_gid: u32,
 }
 
 impl SandboxOptions {
     pub fn flags(&self) -> SandboxFlags {
         self.flags
+    }
+
+    pub fn sandbox_uid(&self) -> Uid {
+        Uid::from_raw(self.sandbox_uid)
+    }
+
+    pub fn sandbox_gid(&self) -> Gid {
+        Gid::from_raw(self.sandbox_gid)
     }
 
     pub fn with_network_isolation(&mut self, isolate: bool) -> &mut Self {
@@ -30,13 +42,10 @@ impl SandboxOptions {
     }
 }
 
-pub trait SandboxTask: crate::ser::Serialize + crate::ser::Deserialize {
+pub trait SandboxTask:
+    crate::ser::Serialize + crate::ser::Deserialize + Send + Sync + 'static
+{
     type ExecuteError: IntoExitCode + std::error::Error;
-    fn execute() -> impl Send + Future<Output = Result<(), Self::ExecuteError>>;
-
-    type CreateSandboxOptionsError: std::error::Error
-        + crate::ser::Serialize
-        + crate::ser::Deserialize;
-    fn create_sandbox_options(
-    ) -> impl Send + Future<Output = Result<SandboxOptions, Self::CreateSandboxOptionsError>>;
+    fn execute(&self, fds: impl AsRef<[OwnedFd]>) -> Result<(), Self::ExecuteError>;
+    fn create_sandbox_options(&self) -> SandboxOptions;
 }
