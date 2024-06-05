@@ -1,4 +1,4 @@
-use std::{future::Future, os::fd::OwnedFd};
+use std::os::fd::OwnedFd;
 
 use nix::unistd::{Gid, Uid};
 

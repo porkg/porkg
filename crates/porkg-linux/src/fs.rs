@@ -219,7 +219,7 @@ impl FsSyscall for Syscall {
         kind = ?kind.as_ref().map(AsRef::as_ref),
         ?flags,
         options = ?options.as_ref().map(AsRef::as_ref),
-    ), err(level = "debug"))]
+    ))]
     fn mount<P1: AsRef<Path>, P2: AsRef<OsStr>, P3: AsRef<OsStr>>(
         source: Option<P1>,
         target: impl AsRef<Path>,
@@ -245,7 +245,7 @@ impl FsSyscall for Syscall {
     #[tracing::instrument(skip_all, fields(
         path = ?path.as_ref(),
         ?flags,
-    ), err(level = "debug"))]
+    ))]
     fn unmount(path: impl AsRef<Path>, flags: UnmountFlags) -> Result<(), UnmountError> {
         let path = path.as_ref();
         let flags = MntFlags::from_bits_truncate(flags.bits() as i32);
@@ -261,7 +261,7 @@ impl FsSyscall for Syscall {
 
     #[tracing::instrument(skip_all, fields(
         path = ?new_root.as_ref(),
-    ), err(level = "debug"))]
+    ))]
     fn pivot(new_root: impl AsRef<Path>) -> Result<(), PivotError> {
         let new_root = new_root.as_ref();
 
@@ -375,7 +375,7 @@ impl FsSyscall for Syscall {
         source = ?source.as_ref(),
         target = ?target.as_ref(),
         flags = ?flags,
-    ), err(level = "debug"))]
+    ))]
     fn bind(
         source: impl AsRef<Path>,
         target: impl AsRef<Path>,

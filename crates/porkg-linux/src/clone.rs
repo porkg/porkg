@@ -18,6 +18,7 @@ use nix::{
 pub use nix::unistd::Pid;
 use porkg_private::os::proc::IntoExitCode;
 use thiserror::Error;
+use tracing::{span, Level, Span};
 
 #[derive(Debug, Clone, Error)]
 #[error("failed to clone process: {source}")]
@@ -55,7 +56,7 @@ bitflags::bitflags! {
 pub trait CloneSyscall {
     /// Clones the current process and invokes the `callback` inside the clone.
     fn clone<R: IntoExitCode + std::fmt::Debug, F: 'static + FnMut() -> R>(
-        callback: Box<F>,
+        callback: F,
         flags: CloneFlags,
     ) -> Result<Pid, CloneError>;
 }
@@ -63,20 +64,30 @@ pub trait CloneSyscall {
 impl CloneSyscall for Syscall {
     #[tracing::instrument(skip(callback), err(level = "debug"))]
     fn clone<R: IntoExitCode + std::fmt::Debug, F: 'static + FnMut() -> R>(
-        mut callback: Box<F>,
+        mut callback: F,
         flags: CloneFlags,
     ) -> Result<Pid, CloneError> {
+        let current = Span::current().id();
+        let mut cb = Box::new(move || {
+            let pid = Pid::this().as_raw();
+            let new = span!(parent: None, Level::TRACE, "cloned", ?pid);
+            new.follows_from(current.clone());
+            let _span = new.entered();
+
+            callback()
+        });
+
         let exit_signal = if flags.contains(CloneFlags::PARENT) {
             0
         } else {
             SIGCHLD
         } as u64;
-        match clone3(&mut callback, flags, exit_signal) {
+        match clone3(&mut cb, flags, exit_signal) {
             Ok(pid) => Ok(pid),
             // For now, we decide to only fallback on ENOSYS
             Err(nix::Error::ENOSYS) => {
                 let flags = flags.difference(CloneFlags::TEST_FALLBACK).bits();
-                let pid = clone_fallback(callback, flags, exit_signal)
+                let pid = clone_fallback(cb, flags, exit_signal)
                     .map_err(|source| CloneError { source })?;
 
                 Ok(pid)

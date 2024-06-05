@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use porkg_linux::private::{BindFlags, CloneFlags, FsSyscall, Pid, Syscall};
+use porkg_linux::__test::{BindFlags, CloneFlags, FsSyscall, Pid, Syscall};
 mod common;
 
 #[test]
