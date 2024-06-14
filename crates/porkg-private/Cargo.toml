@@ -12,6 +12,7 @@ thiserror.workspace = true
 bytes.workspace = true
 async-io.workspace = true
 once_cell.workspace = true
+flume.workspace = true
 
 bincode.workspace = true
 serde = { workspace = true, features = ["derive"] }

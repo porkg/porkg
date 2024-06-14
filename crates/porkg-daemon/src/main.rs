@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use porkg_linux::sandbox::Zygote;
+use porkg_linux::sandbox::SandboxProcess;
 use porkg_private::{
     os::proc::IntoExitCode,
     sandbox::{SandboxOptions, SandboxTask},
@@ -31,7 +31,7 @@ impl SandboxTask for Task {
 
     fn execute(
         &self,
-        fds: impl AsRef<[std::os::unix::prelude::OwnedFd]>,
+        _fds: impl AsRef<[std::os::unix::prelude::OwnedFd]>,
     ) -> Result<(), Self::ExecuteError> {
         tracing::trace!("running");
         Ok(())
@@ -47,10 +47,10 @@ fn main() {
         .try_init()
         .unwrap();
 
-    let (stream, child) = Zygote::<Task>::create_zygote().unwrap();
+    let controller = SandboxProcess::<Task>::start().unwrap();
 
     async_std::task::block_on(async {
-        let zygote = Zygote::<Task>::connect(stream, child).unwrap();
+        let zygote = controller.connect().await.unwrap();
         zygote.spawn_async(Task, &[]).await.unwrap();
 
         async_std::task::sleep(Duration::from_secs(10)).await;

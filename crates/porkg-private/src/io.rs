@@ -15,7 +15,7 @@ use bytes::{buf::Limit, Buf, BufMut, BytesMut};
 use thiserror::Error;
 use uds::UnixStreamExt;
 
-use crate::{mem::BUFFER_POOL, ser};
+use crate::{mem::get_buffer, ser};
 
 const READ_BUFFER_SIZE: usize = 8192;
 const FD_BUFFER_SIZE: usize = 128;
@@ -53,7 +53,7 @@ pub trait DomainSocket {
         message: &T,
         fds: &[RawFd],
     ) -> Result<(), SocketMessageError> {
-        let mut buf = BUFFER_POOL.take();
+        let mut buf = get_buffer();
 
         buf.put_slice(&[0u8; HEADER_SIZE]);
         ser::serialize(message, buf.as_mut())?;
@@ -70,7 +70,7 @@ pub trait DomainSocket {
         &self,
         fds: &mut impl Extend<OwnedFd>,
     ) -> Result<T, SocketMessageError> {
-        let mut buf = BUFFER_POOL.take();
+        let mut buf = get_buffer();
 
         self.recv_exact(&mut buf.reserve_and_limit(HEADER_SIZE), fds)?;
         let len = usize::from_ne_bytes(buf[..HEADER_SIZE].try_into().unwrap());
@@ -149,7 +149,7 @@ impl<S: DomainSocketAsync + Send + Sync> DomainSocketAsyncExt for S {
         message: &T,
         fds: &[RawFd],
     ) -> Result<(), SocketMessageError> {
-        let mut buf = BUFFER_POOL.take();
+        let mut buf = get_buffer();
 
         buf.put_slice(&[0u8; HEADER_SIZE]);
         ser::serialize(message, buf.as_mut())?;
@@ -166,7 +166,7 @@ impl<S: DomainSocketAsync + Send + Sync> DomainSocketAsyncExt for S {
         &self,
         fds: &mut (impl Extend<OwnedFd> + Send),
     ) -> Result<T, SocketMessageError> {
-        let mut buf = BUFFER_POOL.take();
+        let mut buf = get_buffer();
 
         self.recv_exact(&mut buf.reserve_and_limit(HEADER_SIZE), fds)
             .await?;

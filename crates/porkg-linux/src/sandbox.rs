@@ -24,7 +24,7 @@ use crate::{
 };
 
 #[derive(Debug, Error)]
-enum CreateZygoteErrorKind {
+pub enum StartControllerProcessError {
     #[error(transparent)]
     IO(#[from] std::io::Error),
     #[error(transparent)]
@@ -32,34 +32,20 @@ enum CreateZygoteErrorKind {
 }
 
 #[derive(Debug, Error)]
-#[error("failed to start the zygote: {source}")]
-pub struct CreateZygoteError {
-    #[source]
-    source: CreateZygoteErrorKind,
-}
-
-#[derive(Debug, Error)]
-enum ConnectZygoteErrorKind {
+pub enum ConnectControllerError {
     #[error(transparent)]
     IO(#[from] std::io::Error),
 }
 
 #[derive(Debug, Error)]
-#[error("failed to connect to the zygote: {source}")]
-pub struct ConnectZygoteError {
-    #[source]
-    source: ConnectZygoteErrorKind,
-}
-
-#[derive(Debug, Error)]
-enum SpawnZygoteErrorKind {
+pub enum CreateSandboxError {
     #[error(transparent)]
     IO(#[from] std::io::Error),
     #[error(transparent)]
     Serialization(#[from] porkg_private::ser::Error),
 }
 
-impl From<SocketMessageError> for SpawnZygoteErrorKind {
+impl From<SocketMessageError> for CreateSandboxError {
     fn from(value: SocketMessageError) -> Self {
         match value {
             SocketMessageError::IO(i) => Self::IO(i),
@@ -68,36 +54,27 @@ impl From<SocketMessageError> for SpawnZygoteErrorKind {
     }
 }
 
-#[derive(Debug, Error)]
-#[error("failed to spawn a process from the zygote: {source}")]
-pub struct SpawnZygoteError {
-    #[source]
-    #[from]
-    source: SpawnZygoteErrorKind,
-}
+const CMD_HELLO: u8 = 0x1;
+const CMD_START: u8 = 0x2;
 
-const CMD_START: u8 = 0x1;
-
-pub struct Zygote<T: SandboxTask, S: CloneSyscall + ProcSyscall = Syscall> {
-    stream: Async<UnixStream>,
-    _proc: ChildProcess,
+#[derive(Debug)]
+pub struct SandboxProcess<T: SandboxTask, S: CloneSyscall + ProcSyscall = Syscall> {
+    stream: UnixStream,
+    proc: ChildProcess,
     _p: PhantomData<(T, S)>,
 }
 
-impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> Zygote<T, S> {
+impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> SandboxProcess<T, S> {
     #[tracing::instrument]
-    pub fn create_zygote() -> Result<(UnixStream, ChildProcess), CreateZygoteError> {
+    pub fn start() -> Result<Self, StartControllerProcessError> {
         let tools = S::find_tools();
         let (parent, child) = UnixStream::pair()
-            .inspect(|_| tracing::trace!("created socket pair for zygote communication"))
+            .inspect(|_| tracing::trace!("created socket pair for controller communication"))
             .inspect_err(|error| {
                 tracing::error!(
                     ?error,
-                    "failed to create socket pair for zygote communication"
+                    "failed to create socket pair for controller communication"
                 )
-            })
-            .map_err(|source| CreateZygoteError {
-                source: source.into(),
             })?;
 
         let cb = move || match child.try_clone() {
@@ -106,41 +83,55 @@ impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> Zygote<T, S> {
         };
 
         let zygote: ChildProcess = S::clone(cb, CloneFlags::empty())
-            .inspect(|pid| tracing::trace!(?pid, "started zygote process"))
-            .inspect_err(|error| tracing::error!(?error, "failed to start zygote process"))
-            .map_err(|source| CreateZygoteError {
-                source: source.into(),
-            })?
+            .inspect(|pid| tracing::trace!(?pid, "started controller process"))
+            .inspect_err(|error| tracing::error!(?error, "failed to start controller process"))?
             .into();
 
-        Ok((parent, zygote))
-    }
-
-    pub fn connect(stream: UnixStream, proc: ChildProcess) -> Result<Self, ConnectZygoteError> {
-        let stream = Async::new(stream)
-            .inspect_err(|error| tracing::error!(?error, "failed to make socket async"))
-            .map_err(|source| ConnectZygoteError {
-                source: source.into(),
-            })?;
-        Ok(Zygote {
-            stream,
-            _proc: proc,
+        Ok(Self {
+            stream: parent,
+            proc: zygote,
             _p: PhantomData,
         })
     }
 
-    pub async fn spawn_async(&self, task: T, fds: &[RawFd]) -> Result<(), SpawnZygoteError> {
+    #[tracing::instrument(skip_all)]
+    pub async fn connect(self) -> Result<SandboxController<T, S>, ConnectControllerError> {
+        let stream = Async::new(self.stream)
+            .inspect_err(|error| tracing::error!(?error, "failed to make socket async"))?;
+        stream
+            .send_all(&mut &[CMD_HELLO][..], &[])
+            .await
+            .inspect(|_| tracing::trace!("sent connect message"))
+            .inspect_err(|error| tracing::trace!(?error, "failed to send connect message"))?;
+        Ok(SandboxController {
+            stream,
+            _proc: self.proc,
+            _p: PhantomData,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct SandboxController<T: SandboxTask, S: CloneSyscall + ProcSyscall = Syscall> {
+    stream: Async<UnixStream>,
+    _proc: ChildProcess,
+    _p: PhantomData<(T, S)>,
+}
+
+impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> SandboxController<T, S> {
+    #[tracing::instrument(skip_all)]
+    pub async fn spawn_async(&self, task: T, fds: &[RawFd]) -> Result<(), CreateSandboxError> {
         self.stream
             .send_all(&mut &[CMD_START][..], &[])
             .await
             .inspect_err(|error| tracing::trace!(?error, "failed to send start message"))
-            .map_err(SpawnZygoteErrorKind::from)?;
+            .map_err(CreateSandboxError::from)?;
         self.stream
             .send_message(&task, fds)
             .await
             .inspect(|_| tracing::trace!("sent start message"))
             .inspect_err(|error| tracing::trace!(?error, "failed to send start message"))
-            .map_err(SpawnZygoteErrorKind::from)?;
+            .map_err(CreateSandboxError::from)?;
 
         Ok(())
     }
@@ -150,8 +141,11 @@ fn zygote_main<T: SandboxTask, S: CloneSyscall + ProcSyscall>(
     host: UnixStream,
     tools: IdMappingTools,
 ) -> anyhow::Result<()> {
+    let mut cmd_buf = [0u8; 1];
+    host.recv_exact(&mut &mut cmd_buf[..], &mut Vec::new())
+        .context("while reading command from host")?;
+
     loop {
-        let mut cmd_buf = [0u8; 1];
         let mut fds = Vec::new();
 
         host.recv_exact(&mut &mut cmd_buf[..], &mut fds)
