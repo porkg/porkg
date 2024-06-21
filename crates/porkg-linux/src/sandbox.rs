@@ -9,13 +9,13 @@ use std::{
 };
 
 use anyhow::Context as _;
-use async_io::Async;
 use porkg_private::{
     io::{DomainSocket, DomainSocketAsync as _, DomainSocketAsyncExt, SocketMessageError},
     os::proc::{ChildProcess, IntoExitCode},
     sandbox::{SandboxOptions, SandboxTask},
 };
 use thiserror::Error;
+use tokio::net::UnixStream as UnixStreamAsync;
 
 use crate::{
     clone::{CloneError, CloneFlags, CloneSyscall},
@@ -57,6 +57,11 @@ impl From<SocketMessageError> for CreateSandboxError {
 const CMD_HELLO: u8 = 0x1;
 const CMD_START: u8 = 0x2;
 
+fn make_async(s: UnixStream) -> std::io::Result<UnixStreamAsync> {
+    s.set_nonblocking(true)?;
+    UnixStreamAsync::from_std(s)
+}
+
 #[derive(Debug)]
 pub struct SandboxProcess<T: SandboxTask, S: CloneSyscall + ProcSyscall = Syscall> {
     stream: UnixStream,
@@ -96,7 +101,7 @@ impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> SandboxProcess<T, S> {
 
     #[tracing::instrument(skip_all)]
     pub async fn connect(self) -> Result<SandboxController<T, S>, ConnectControllerError> {
-        let stream = Async::new(self.stream)
+        let stream = make_async(self.stream)
             .inspect_err(|error| tracing::error!(?error, "failed to make socket async"))?;
         stream
             .send_all(&mut &[CMD_HELLO][..], &[])
@@ -113,7 +118,7 @@ impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> SandboxProcess<T, S> {
 
 #[derive(Debug)]
 pub struct SandboxController<T: SandboxTask, S: CloneSyscall + ProcSyscall = Syscall> {
-    stream: Async<UnixStream>,
+    stream: UnixStreamAsync,
     _proc: ChildProcess,
     _p: PhantomData<(T, S)>,
 }

@@ -49,10 +49,17 @@ fn main() {
 
     let controller = SandboxProcess::<Task>::start().unwrap();
 
-    async_std::task::block_on(async {
+    // cloneing when there are multiple threads is UB, so the above must occur first.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .unwrap();
+
+    runtime.block_on(async {
         let zygote = controller.connect().await.unwrap();
         zygote.spawn_async(Task, &[]).await.unwrap();
 
-        async_std::task::sleep(Duration::from_secs(10)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
     })
 }

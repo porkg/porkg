@@ -9,8 +9,8 @@ bitflags.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 
+tokio = { workspace = true, features = ["net"] }
 bytes.workspace = true
-async-io.workspace = true
 once_cell.workspace = true
 flume.workspace = true
 
@@ -20,12 +20,14 @@ serde = { workspace = true, features = ["derive"] }
 nix = { workspace = true, features = [
 # proc
 "process",
-"signal"
+"signal",
+"user"
 ] }
-uds.workspace = true
+uds = { workspace = true, features = [ "tokio", "async_trait" ] }
 
 [dev-dependencies]
 pretty_assertions.workspace = true
 tracing-subscriber.workspace = true
 test-log = { workspace = true, features = [ "trace" ] }
-signal-hook = "0.3.17"
+signal-hook.workspace = true
+tokio = { workspace = true, features = [ "rt", "macros" ] }
