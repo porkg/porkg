@@ -1,0 +1,7 @@
+[package]
+name = "porkg-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+porkg-test-macros.path="../porkg-test-macros"

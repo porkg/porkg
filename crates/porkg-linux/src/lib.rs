@@ -5,8 +5,8 @@ pub mod sandbox;
 
 use private::{Syscall, NO_PATH};
 
-#[doc(hidden)]
-pub mod __test {
+// #[cfg(feature = "__itest")]
+pub mod __itest {
     pub use super::clone::*;
     pub use super::fs::*;
     pub use super::private::{Syscall, NO_PATH};

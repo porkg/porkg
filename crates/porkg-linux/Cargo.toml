@@ -3,6 +3,9 @@ name = "porkg-linux"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+__itest = []
+
 [dependencies]
 porkg-private.workspace = true
 
@@ -13,6 +16,7 @@ tracing.workspace = true
 
 tokio.workspace = true
 bytes.workspace = true
+async-lock.workspace = true
 
 nix = { workspace = true, features = [
 # Clone
@@ -36,3 +40,4 @@ which.workspace = true
 pretty_assertions.workspace = true
 tracing-subscriber.workspace = true
 test-log = { workspace = true, features = [ "trace" ] }
+porkg-test.workspace = true

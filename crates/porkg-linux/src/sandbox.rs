@@ -6,9 +6,11 @@ use std::{
         fd::OwnedFd,
         unix::{net::UnixStream, prelude::RawFd},
     },
+    sync::Arc,
 };
 
 use anyhow::Context as _;
+use async_lock::Mutex;
 use porkg_private::{
     io::{DomainSocket, DomainSocketAsync as _, DomainSocketAsyncExt, SocketMessageError},
     os::proc::{ChildProcess, IntoExitCode},
@@ -108,30 +110,54 @@ impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> SandboxProcess<T, S> {
             .await
             .inspect(|_| tracing::trace!("sent connect message"))
             .inspect_err(|error| tracing::trace!(?error, "failed to send connect message"))?;
-        Ok(SandboxController {
+        let state = Arc::new(Mutex::new(State {
             stream,
             _proc: self.proc,
             _p: PhantomData,
-        })
+        }));
+        Ok(SandboxController(state))
     }
 }
 
-#[derive(Debug)]
-pub struct SandboxController<T: SandboxTask, S: CloneSyscall + ProcSyscall = Syscall> {
+struct State<T: SandboxTask, S: CloneSyscall + ProcSyscall = Syscall> {
     stream: UnixStreamAsync,
     _proc: ChildProcess,
     _p: PhantomData<(T, S)>,
 }
 
+pub struct SandboxController<T: SandboxTask, S: CloneSyscall + ProcSyscall = Syscall>(
+    Arc<Mutex<State<T, S>>>,
+);
+
+impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> Clone for SandboxController<T, S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> std::fmt::Debug for SandboxController<T, S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let v = self.0.lock_arc_blocking();
+        f.debug_struct("SandboxController")
+            .field("stream", &v.stream)
+            .field("_proc", &v._proc)
+            .field("_p", &v._p)
+            .finish()
+    }
+}
+
 impl<T: SandboxTask, S: CloneSyscall + ProcSyscall> SandboxController<T, S> {
     #[tracing::instrument(skip_all)]
     pub async fn spawn_async(&self, task: T, fds: &[RawFd]) -> Result<(), CreateSandboxError> {
-        self.stream
+        let state = self.0.lock_arc().await;
+        state
+            .stream
             .send_all(&mut &[CMD_START][..], &[])
             .await
             .inspect_err(|error| tracing::trace!(?error, "failed to send start message"))
             .map_err(CreateSandboxError::from)?;
-        self.stream
+        state
+            .stream
             .send_message(&task, fds)
             .await
             .inspect(|_| tracing::trace!("sent start message"))

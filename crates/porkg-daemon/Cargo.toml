@@ -11,4 +11,10 @@ thiserror.workspace = true
 serde = { workspace = true, features = [ "derive" ]}
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
-tokio = { workspace = true, features = ["rt-multi-thread", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "time", "sync", "fs", "signal"] }
+tokio-util = { workspace = true }
+axum = { workspace = true, features = ["json", "http1", "tokio"] }
+hyper = { workspace = true }
+hyper-util = { workspace = true, features = ["tokio"] }
+tower-service.workspace = true
+flume.workspace = true

@@ -313,3 +313,13 @@ extern "C" fn clone_main<R: IntoExitCode + std::fmt::Debug, F: 'static + FnMut()
 // ../tests/clone_err.rs
 // ../tests/clone_parent.rs
 // ../tests/clone_fallback.rs
+
+#[cfg(test)]
+mod tests {
+    #[porkg_test::fork_test]
+    #[test]
+    fn test() -> Result<(), ()> {
+        assert!(false);
+        Ok(())
+    }
+}

@@ -1,6 +1,5 @@
 [toolchain]
-# Waiting for 1.79.0 for inline-const
-channel = "nightly-2024-05-01"
+channel = "1.79.0"
 components = [ "cargo", "rust-src", "rust-analyzer", "clippy", "rustfmt" ]
 profile = "minimal"
 targets = [ "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl" ]
