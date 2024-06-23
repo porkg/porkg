@@ -316,10 +316,26 @@ extern "C" fn clone_main<R: IntoExitCode + std::fmt::Debug, F: 'static + FnMut()
 
 #[cfg(test)]
 mod tests {
+    use anyhow::{bail, Context as _};
+    use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+
+    use crate::private::Syscall;
+
+    use super::{CloneFlags, CloneSyscall as _};
+
     #[porkg_test::fork_test]
     #[test]
-    fn test() -> Result<(), ()> {
-        assert!(false);
-        Ok(())
+    fn test() -> anyhow::Result<()> {
+        let pid = Syscall::clone(Box::new(|| -1), CloneFlags::empty())?;
+        match waitpid(pid, Some(WaitPidFlag::__WALL))
+            .with_context(|| format!("failed to wait for {pid:?}"))?
+        {
+            WaitStatus::Exited(p, status) => {
+                assert_eq!(pid, p);
+                assert_eq!(status, 255);
+                Ok(())
+            }
+            status => bail!("unexpected status {status:?}"),
+        }
     }
 }

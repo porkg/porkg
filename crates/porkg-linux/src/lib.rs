@@ -5,14 +5,6 @@ pub mod sandbox;
 
 use private::{Syscall, NO_PATH};
 
-// #[cfg(feature = "__itest")]
-pub mod __itest {
-    pub use super::clone::*;
-    pub use super::fs::*;
-    pub use super::private::{Syscall, NO_PATH};
-    pub use super::proc::*;
-}
-
 pub(crate) mod private {
     use std::path::Path;
 
