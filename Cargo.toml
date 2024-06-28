@@ -41,6 +41,7 @@ data-encoding-macro = "0.1.14"
 clap = {version = "4.4.11", default-features = false }
 argfile = "0.1.6"
 which = "6.0.1"
+config = {version = "0.14.0", default-features = false, features = ["toml"]}
 
 pretty_assertions = "1.4.0"
 test-log = "0.2.15"

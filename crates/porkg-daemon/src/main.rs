@@ -11,6 +11,7 @@ use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
+mod config;
 mod error;
 mod frontend;
 

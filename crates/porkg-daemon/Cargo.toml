@@ -18,3 +18,4 @@ hyper = { workspace = true }
 hyper-util = { workspace = true, features = ["tokio"] }
 tower-service.workspace = true
 flume.workspace = true
+config.workspace = true
