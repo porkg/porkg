@@ -114,7 +114,7 @@ pub fn run(module: &str, test: &str) -> ExitCode {
         .args(args)
         .env("PORKG_IN_TEST", "1")
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
+        .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
         .expect("test process executes");

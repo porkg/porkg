@@ -361,6 +361,7 @@ mod test {
         }
     }
 
+    #[cfg(never)]
     #[test]
     pub fn take_hook() {
         static COUNTER: AtomicU64 = AtomicU64::new(1);

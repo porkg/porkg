@@ -1,5 +1,3 @@
-use std::process::Termination;
-
 use proc_macro::TokenStream;
 
 mod fork;

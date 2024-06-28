@@ -738,11 +738,9 @@ dependencies = [
  "porkg-test",
  "pretty_assertions",
  "procfs",
- "test-log",
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "uds",
  "which",
 ]
@@ -759,6 +757,7 @@ dependencies = [
  "nix",
  "once_cell",
  "pin-project-lite",
+ "porkg-test",
  "pretty_assertions",
  "serde",
  "signal-hook",
@@ -775,6 +774,9 @@ name = "porkg-test"
 version = "0.1.0"
 dependencies = [
  "porkg-test-macros",
+ "test-log",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

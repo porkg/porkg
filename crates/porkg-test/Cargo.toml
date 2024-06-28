@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 porkg-test-macros.path="../porkg-test-macros"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+test-log = { workspace = true, features = [ "trace" ] }

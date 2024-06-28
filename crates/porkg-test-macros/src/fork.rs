@@ -66,7 +66,7 @@ fn build_test(name: Ident, ret: TokenStream, g: proc_macro2::Group) -> TokenStre
         }
     } else {
         quote::quote! {
-            std::process::Termination::report({ #g } as #ret)
+            std::process::Termination::report((|| -> #ret { #g })())
         }
     };
 

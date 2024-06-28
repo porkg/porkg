@@ -38,6 +38,4 @@ which.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true
-tracing-subscriber.workspace = true
-test-log = { workspace = true, features = [ "trace" ] }
 porkg-test.workspace = true

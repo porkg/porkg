@@ -35,8 +35,4 @@ tracing-subscriber.workspace = true
 test-log = { workspace = true, features = [ "trace" ] }
 signal-hook.workspace = true
 tokio = { workspace = true, features = [ "rt", "macros", "time" ] }
-
-[[test]]
-# this test is pretty slow
-name = "process_drop_kill"
-required-features = [ "__itest" ]
+porkg-test.workspace = true

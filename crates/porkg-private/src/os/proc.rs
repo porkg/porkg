@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     ops::Add,
+    sync::atomic::AtomicU64,
     time::{Duration, Instant},
 };
 
@@ -40,7 +41,8 @@ impl IntoExitCode for i32 {
     }
 }
 
-const CHILD_DROP_WAIT: Duration = Duration::from_secs(5);
+static CHILD_DROP_WAIT_MILLIS: AtomicU64 = AtomicU64::new(4500);
+static CHILD_KILL_WAIT_MILLIS: AtomicU64 = AtomicU64::new(500);
 
 /// Kills a child process (first with SIGINT, then with SIGKILL if it takes more than 5 seconds) when this value is
 /// dropped.
@@ -148,7 +150,9 @@ impl ChildProcess {
         }
 
         tracing::trace!(?pid, "waiting for process to exit");
-        let end = Instant::now().add(CHILD_DROP_WAIT);
+        let end = Instant::now().add(Duration::from_millis(
+            CHILD_DROP_WAIT_MILLIS.load(std::sync::atomic::Ordering::Relaxed),
+        ));
 
         loop {
             match Self::poll(pid) {
@@ -171,7 +175,9 @@ impl ChildProcess {
         tracing::warn!(?pid, "process has taken too long to exit, sending SIGKILL");
         Self::kill(pid, Signal::SIGKILL)?;
 
-        let end = Instant::now().add(Duration::from_secs(1));
+        let end = Instant::now().add(Duration::from_millis(
+            CHILD_KILL_WAIT_MILLIS.load(std::sync::atomic::Ordering::Relaxed),
+        ));
         loop {
             match Self::poll(pid) {
                 Ok(_) => return Ok(()),
@@ -191,6 +197,72 @@ impl ChildProcess {
         }
 
         tracing::warn!(?pid, "process has not responded to SIGKILL");
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{
+        sync::{atomic::AtomicBool, Arc},
+        time::Duration,
+    };
+
+    use anyhow::Context as _;
+    use nix::{
+        errno::Errno,
+        sys::wait::{waitpid, WaitPidFlag},
+        unistd::fork,
+    };
+    use porkg_test::{fork_test, init_test_logging};
+
+    use crate::os::proc::ChildProcess;
+
+    type Result = anyhow::Result<()>;
+
+    #[fork_test]
+    #[test]
+    fn proc_drop() -> Result {
+        init_test_logging();
+        match unsafe { fork() }.context("creating child process")? {
+            nix::unistd::ForkResult::Parent { child } => {
+                let pid = child;
+                let child: ChildProcess = child.into();
+                drop(child);
+
+                assert_eq!(waitpid(pid, Some(WaitPidFlag::WNOHANG)), Err(Errno::ECHILD));
+            }
+            nix::unistd::ForkResult::Child => std::thread::park(),
+        }
+
+        Ok(())
+    }
+
+    #[fork_test]
+    #[test]
+    fn proc_drop_kill() -> Result {
+        init_test_logging();
+        match unsafe { fork() }.context("creating child process")? {
+            nix::unistd::ForkResult::Parent { child } => {
+                super::CHILD_DROP_WAIT_MILLIS.store(100, std::sync::atomic::Ordering::SeqCst);
+                super::CHILD_KILL_WAIT_MILLIS.store(100, std::sync::atomic::Ordering::SeqCst);
+
+                let pid = child;
+                std::thread::sleep(Duration::from_secs(1));
+                let child: ChildProcess = child.into();
+                drop(child);
+
+                assert_eq!(waitpid(pid, Some(WaitPidFlag::WNOHANG)), Err(Errno::ECHILD));
+            }
+            nix::unistd::ForkResult::Child => {
+                let term = Arc::new(AtomicBool::new(false));
+                signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term))
+                    .unwrap();
+                loop {
+                    std::thread::sleep(Duration::from_secs(1));
+                }
+            }
+        }
         Ok(())
     }
 }

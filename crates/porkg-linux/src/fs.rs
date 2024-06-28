@@ -437,3 +437,128 @@ pub fn has_existing_shared_mount(path: &Path) -> Option<bool> {
 // ../tests/fs_bind_ro.rs
 // ../tests/fs_mount.rs
 // ../tests/fs_pivot.rs
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::{
+        clone::CloneFlags,
+        private::{Syscall, NO_PATH},
+    };
+    use anyhow::Context as _;
+    use nix::unistd::Pid;
+
+    use porkg_test::{fork_test, init_test_logging};
+
+    use super::*;
+
+    type Result = anyhow::Result<()>;
+
+    #[fork_test]
+    #[test]
+    fn bind_basic() -> Result {
+        init_test_logging();
+        let pid = Pid::this().as_raw();
+
+        crate::test::as_root(
+            Box::new(move || {
+                let dir = PathBuf::from(format!("/tmp/tmp_mount_{pid}"));
+                let file = dir.join(format!("test_{pid}"));
+
+                std::fs::create_dir_all(&dir).context("when creating the directory")?;
+                Syscall::bind("/tmp", &dir, BindFlags::RECURSIVE).context("when bind mounting")?;
+
+                std::fs::write(file, "test file").context("when writing to bind mount")?;
+                std::fs::read(format!("/tmp/test_{pid}")).context("when reading from file")?;
+
+                Ok(())
+            }),
+            CloneFlags::NEWNS | CloneFlags::NEWUSER | CloneFlags::NEWPID,
+        )?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn bind_ro() -> Result {
+        init_test_logging();
+
+        let pid = Pid::this().as_raw();
+
+        crate::test::as_root(
+            Box::new(move || {
+                let dir = PathBuf::from(format!("/tmp/tmp_mount_{pid}"));
+                let file = dir.join(format!("test_{pid}"));
+
+                std::fs::create_dir_all(&dir).context("when creating the directory")?;
+                Syscall::bind("/tmp", &dir, BindFlags::RECURSIVE | BindFlags::READ_ONLY)
+                    .context("when read-only bind mounting")?;
+
+                std::fs::write(file, "test file").expect_err("should be read only");
+
+                Ok(())
+            }),
+            CloneFlags::NEWNS | CloneFlags::NEWUSER | CloneFlags::NEWPID,
+        )?;
+
+        Ok(())
+    }
+
+    #[fork_test]
+    #[test]
+    fn mount_proc() -> Result {
+        init_test_logging();
+        let pid = Pid::this().as_raw();
+
+        crate::test::as_root(
+            Box::new(move || {
+                let dir = PathBuf::from(format!("/tmp/tmp_mount_{pid}"));
+                std::fs::create_dir_all(&dir).context("when creating the directory")?;
+                Syscall::mount(
+                    NO_PATH,
+                    &dir,
+                    Some(MountKind::Proc),
+                    MountFlags::empty(),
+                    NO_PATH,
+                )
+                .context("when mounting")?;
+
+                std::fs::read(dir.join("stat")).context("when reading <tmp>/stat")?;
+
+                Syscall::unmount(&dir, UnmountFlags::empty()).context("when unmounting")?;
+
+                Ok(())
+            }),
+            CloneFlags::NEWNS | CloneFlags::NEWUSER | CloneFlags::NEWPID,
+        )?;
+
+        Ok(())
+    }
+
+    #[fork_test]
+    #[test]
+    fn test_bind() -> Result {
+        init_test_logging();
+        let pid = Pid::this().as_raw();
+
+        crate::test::as_root(
+            Box::new(move || {
+                let dir = PathBuf::from(format!("/tmp/tmp_mount_{pid}"));
+                let file = format!("test_{pid}");
+
+                std::fs::create_dir_all(&dir).context("when creating the directory")?;
+                std::fs::write(dir.join(file), "test file").context("when writing to test file")?;
+
+                Syscall::pivot(dir).context("when pivoting to new root")?;
+
+                std::fs::read(format!("/test_{pid}")).context("when reading from file")?;
+
+                Ok(())
+            }),
+            CloneFlags::NEWNS | CloneFlags::NEWUSER | CloneFlags::NEWPID,
+        )?;
+
+        Ok(())
+    }
+}
