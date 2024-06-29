@@ -3,7 +3,8 @@ use serde::Deserialize;
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Config {
-    bind: BindConfig,
+    #[serde(default)]
+    pub bind: BindConfig,
 }
 
 impl Config {
@@ -23,14 +24,20 @@ impl Config {
 
 #[derive(Debug, Deserialize)]
 pub struct BindConfig {
-    socket: String,
-    tcp: Vec<String>,
+    #[serde(default = "default_socket_path")]
+    pub socket: String,
+    #[serde(default)]
+    pub tcp: Vec<String>,
+}
+
+fn default_socket_path() -> String {
+    "/var/lib/porkg/porkg.sock".into()
 }
 
 impl Default for BindConfig {
     fn default() -> Self {
         Self {
-            socket: "/var/lib/porkg/porkg.sock".into(),
+            socket: default_socket_path(),
             tcp: Vec::new(),
         }
     }

@@ -1,4 +1,4 @@
-use std::{net::ToSocketAddrs, path::PathBuf};
+use std::net::ToSocketAddrs;
 
 use anyhow::Context;
 use axum::extract::connect_info::Connected;
@@ -13,18 +13,7 @@ use tokio::net::{TcpListener, TcpStream, UnixListener, UnixStream};
 use tokio_util::sync::CancellationToken;
 use tower_service::Service;
 
-pub struct UnixHostOptions {
-    pub path: PathBuf,
-}
-
-pub struct TcpHostOptions {
-    pub listen: Vec<std::net::SocketAddr>,
-}
-
-pub struct HostOptions {
-    pub unix: UnixHostOptions,
-    pub tcp: Option<TcpHostOptions>,
-}
+use crate::config::BindConfig;
 
 enum Client {
     Tcp { stream: TokioIo<TcpStream> },
@@ -109,26 +98,26 @@ impl Connected<&Client> for ClientInfo {
 }
 
 pub async fn serve(
-    settings: HostOptions,
+    settings: &BindConfig,
     router: axum::Router,
     cancellation_token: CancellationToken,
 ) -> anyhow::Result<()>
 where
 {
-    let socket = settings.unix;
-    if tokio::fs::try_exists(&socket.path).await? {
-        tracing::trace!(socket_path = ?&socket.path, "cleaning up previous socket");
-        tokio::fs::remove_file(&socket.path)
+    let socket_path = &settings.socket;
+    if tokio::fs::try_exists(socket_path).await? {
+        tracing::trace!(socket_path, "cleaning up previous socket");
+        tokio::fs::remove_file(socket_path)
             .await
-            .with_context(|| format!("failed to bind to {:?}", &socket.path))?;
+            .with_context(|| format!("failed to bind to {:?}", socket_path))?;
     }
 
-    tracing::trace!(socket_path = ?&socket.path, "binding");
-    let unix = UnixListener::bind(&socket.path)?;
+    tracing::trace!(socket_path, "binding");
+    let unix = UnixListener::bind(socket_path)?;
 
-    let tcp = if let Some(tcp) = settings.tcp.as_ref() {
-        let mut socket_addrs = Vec::with_capacity(tcp.listen.len());
-        for bind in tcp.listen.iter() {
+    let tcp = if !settings.tcp.is_empty() {
+        let mut socket_addrs = Vec::with_capacity(settings.tcp.len());
+        for bind in settings.tcp.iter() {
             for addr in bind.to_socket_addrs()? {
                 socket_addrs.push(addr);
             }

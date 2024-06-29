@@ -1,5 +1,6 @@
-use std::{future::Future, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 
+use config::Config;
 use porkg_linux::sandbox::{SandboxController, SandboxProcess};
 use porkg_private::{
     os::proc::IntoExitCode,
@@ -19,6 +20,7 @@ mod frontend;
 struct SetupState {
     controller: SandboxController<Task>,
     exit: flume::Sender<Option<anyhow::Error>>,
+    config: Arc<Config>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -51,6 +53,8 @@ impl SandboxTask for Task {
 }
 
 fn main() -> anyhow::Result<()> {
+    let config = Config::load()?;
+
     // TODO: Move this into each process and send traces via the channels
     //
     tracing_subscriber::registry()
@@ -72,6 +76,7 @@ fn main() -> anyhow::Result<()> {
     let state = SetupState {
         controller,
         exit: sender.clone(),
+        config: Arc::new(config),
     };
 
     let cancellation_token = CancellationToken::new();
