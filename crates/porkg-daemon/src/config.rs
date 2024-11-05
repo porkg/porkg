@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Context as _;
 use serde::Deserialize;
 
@@ -5,6 +7,8 @@ use serde::Deserialize;
 pub struct Config {
     #[serde(default)]
     pub bind: BindConfig,
+    #[serde(default)]
+    pub store: StoreConfig,
 }
 
 impl Config {
@@ -24,13 +28,20 @@ impl Config {
 
 #[derive(Debug, Deserialize)]
 pub struct BindConfig {
-    #[serde(default = "default_socket_path")]
-    pub socket: String,
+    #[serde(default = "default_socket_path", with = "porkg_private::ser::pathbuf")]
+    pub socket: PathBuf,
     #[serde(default)]
     pub tcp: Vec<String>,
 }
 
-fn default_socket_path() -> String {
+fn default_socket_path() -> PathBuf {
+    // Automatically set the socket path if we are running under systemd
+    if let Ok(dir) = std::env::var("RUNTIME_DIRECTORY") {
+        let mut path = PathBuf::from(dir);
+        path.push("porkg.sock");
+        return path;
+    }
+
     "/var/lib/porkg/porkg.sock".into()
 }
 
@@ -41,4 +52,14 @@ impl Default for BindConfig {
             tcp: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct StoreConfig {
+    #[serde(default = "default_store_path", with = "porkg_private::ser::pathbuf")]
+    pub path: PathBuf,
+}
+
+fn default_store_path() -> PathBuf {
+    "/var/lib/porkg/store".into()
 }

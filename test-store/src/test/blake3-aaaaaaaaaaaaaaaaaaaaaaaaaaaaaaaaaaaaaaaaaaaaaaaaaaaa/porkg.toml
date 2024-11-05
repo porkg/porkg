@@ -1,0 +1,17 @@
+[package]
+name = "test"
+shell = ["${busybox}/bin/sh"]
+
+[dependencies]
+
+[build-dependencies]
+busybox = { name = "busybox", pkg = "out", hash = "blake3-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+
+[env]
+PATH = "${busybox}/bin"
+
+[build-phase]
+execute = ["/src/build.sh"]
+
+[install-phase]
+execute = ["/src/install.sh"]

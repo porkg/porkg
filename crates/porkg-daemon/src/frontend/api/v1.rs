@@ -1,8 +1,20 @@
 use std::sync::Arc;
 
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use porkg_linux::sandbox::SandboxController;
 
-struct State {}
+use crate::{config::Config, Task};
+
+mod build;
+
+#[derive(Debug, Clone)]
+struct SharedState {
+    controller: SandboxController<Task>,
+    config: Arc<Config>,
+}
 
 async fn root() -> String {
     "Hello World".to_string()
@@ -11,5 +23,9 @@ async fn root() -> String {
 pub fn build(state: &crate::SetupState) -> Router<()> {
     Router::new()
         .route("/", get(root))
-        .with_state(Arc::new(State {}))
+        .route("/build", post(build::post))
+        .with_state(SharedState {
+            controller: state.controller.clone(),
+            config: state.config.clone(),
+        })
 }

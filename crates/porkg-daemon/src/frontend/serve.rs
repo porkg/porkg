@@ -105,14 +105,22 @@ pub async fn serve(
 where
 {
     let socket_path = &settings.socket;
+    if let Some(parent) = socket_path.parent() {
+        if !tokio::fs::try_exists(parent).await? {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("failed to bind to {:?}", socket_path))?;
+        }
+    }
+
     if tokio::fs::try_exists(socket_path).await? {
-        tracing::trace!(socket_path, "cleaning up previous socket");
+        tracing::trace!(?socket_path, "cleaning up previous socket");
         tokio::fs::remove_file(socket_path)
             .await
             .with_context(|| format!("failed to bind to {:?}", socket_path))?;
     }
 
-    tracing::trace!(socket_path, "binding");
+    tracing::trace!(?socket_path, "binding");
     let unix = UnixListener::bind(socket_path)?;
 
     let tcp = if !settings.tcp.is_empty() {
@@ -141,7 +149,6 @@ where
             result = unix.accept() =>  result.map(Into::into),
             result = tcp => result.map(Into::into),
             _ = cancellation_token.cancelled() => {
-                println!("f");
                 break Ok(())
                 }
         };
@@ -154,7 +161,14 @@ where
         let tower_service = make.call(&socket).await.unwrap_or_else(|err| match err {});
 
         tokio::spawn(async move {
+            let client = ClientInfo::connect_info(&socket);
+            let span = tracing::trace_span!("connection", ?client);
+            let _span = span.enter();
+
             let hyper_service = hyper::service::service_fn(move |request: Request<Incoming>| {
+                let span = tracing::trace_span!("request", method = ?request.method(), uri = ?request.uri());
+                let _span = span.enter();
+                tracing::trace!("handling request");
                 tower_service.clone().call(request)
             });
 

@@ -12,7 +12,7 @@ bitflags.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 
-tokio = { workspace = true, features = ["net"] }
+tokio = { workspace = true, features = ["net", "io-util"] }
 bytes.workspace = true
 once_cell.workspace = true
 flume.workspace = true
@@ -22,17 +22,17 @@ bincode.workspace = true
 serde = { workspace = true, features = ["derive"] }
 
 nix = { workspace = true, features = [
-# proc
-"process",
-"signal",
-"user"
+    # proc
+    "process",
+    "signal",
+    "user",
 ] }
-uds = { workspace = true, features = [ "tokio", "async_trait" ] }
+uds = { workspace = true, features = ["tokio", "async_trait"] }
 
 [dev-dependencies]
 pretty_assertions.workspace = true
 tracing-subscriber.workspace = true
-test-log = { workspace = true, features = [ "trace" ] }
+test-log = { workspace = true, features = ["trace"] }
 signal-hook.workspace = true
-tokio = { workspace = true, features = [ "rt", "macros", "time" ] }
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
 porkg-test.workspace = true

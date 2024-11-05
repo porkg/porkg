@@ -6,12 +6,20 @@ edition = "2021"
 [dependencies]
 porkg-linux.workspace = true
 porkg-private.workspace = true
+porkg-model.workspace = true
+
 anyhow.workspace = true
 thiserror.workspace = true
-serde = { workspace = true, features = [ "derive" ]}
+serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
-tokio = { workspace = true, features = ["rt-multi-thread", "time", "sync", "fs", "signal"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "time",
+    "sync",
+    "fs",
+    "signal",
+] }
 tokio-util = { workspace = true }
 axum = { workspace = true, features = ["json", "http1", "tokio"] }
 hyper = { workspace = true }
@@ -19,3 +27,6 @@ hyper-util = { workspace = true, features = ["tokio"] }
 tower-service.workspace = true
 flume.workspace = true
 config.workspace = true
+
+[dev-dependencies]
+axum-macros.workspace = true

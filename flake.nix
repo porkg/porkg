@@ -22,10 +22,10 @@
       systems = ["x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin"];
       perSystem = {
         config,
-        self',
-        inputs',
+        # self',
+        # inputs',
         pkgs,
-        system,
+        # system,
         ...
       }: let
         outputs = config.nci.outputs;
@@ -64,6 +64,9 @@
               export PORK__DAEMON__SUB_GID__MIN=''${parts[0]}
               export PORK__DAEMON__SUB_GID__MAX=''${parts[1]}
             fi
+
+            export PORKG__BIND__SOCKET=$(pwd)/target/runtime/porkg.socket
+            export PORKG__STORE__PATH=$(pwd)/test-store/
           '';
         });
         formatter = pkgs.alejandra;

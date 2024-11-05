@@ -1,0 +1,17 @@
+[package]
+name = "porkg-model"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+__itest = []
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tracing.workspace = true
+
+blake3.workspace = true
+
+data-encoding.workspace = true
+data-encoding-macro.workspace = true
