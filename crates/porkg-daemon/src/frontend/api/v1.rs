@@ -6,13 +6,13 @@ use axum::{
 };
 use porkg_linux::sandbox::SandboxController;
 
-use crate::{config::Config, Task};
+use crate::{backend::BuildTask, config::Config};
 
 mod build;
 
 #[derive(Debug, Clone)]
 struct SharedState {
-    controller: SandboxController<Task>,
+    controller: SandboxController<BuildTask>,
     config: Arc<Config>,
 }
 

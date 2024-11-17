@@ -33,12 +33,16 @@ pub trait StableHasherExt: StableHasher {
     ///
     /// Don't use this on types where the order is not deterministic, such as [`std::collections::HashMap`]. Use
     /// collections with stable ordering instead, such as [`std::collections::BTreeMap`].
-    fn update_iter<H: StableHash>(&mut self, v: impl Iterator<Item = H>) -> &mut Self {
+    fn update_iter<H: StableHash>(
+        &mut self,
+        v: impl Iterator<Item = H>,
+        len: Option<usize>,
+    ) -> &mut Self {
+        self.update_hash(len.map(|v| v as u64).unwrap_or(u64::MAX));
         for (i, v) in v.enumerate() {
             self.update_hash(i as u64);
             v.update(self);
         }
-        self.update_hash(u64::MAX);
         self
     }
 }
@@ -180,10 +184,7 @@ impl<T: StableHash> StableHash for Vec<T> {
 impl<T: StableHash> StableHash for [T] {
     #[inline(always)]
     fn update<H: StableHasher>(&self, h: &mut H) {
-        h.update_hash(self.len());
-        for i in self.iter() {
-            i.update(h);
-        }
+        h.update_iter(self.iter(), Some(self.len()));
     }
 }
 
@@ -202,14 +203,14 @@ impl<T: StableHash> StableHash for Option<T> {
 impl<T: StableHash> StableHash for BTreeSet<T> {
     #[inline(always)]
     fn update<H: StableHasher>(&self, h: &mut H) {
-        h.update_iter(self.iter());
+        h.update_iter(self.iter(), Some(self.len()));
     }
 }
 
 impl<K: StableHash, V: StableHash> StableHash for BTreeMap<K, V> {
     #[inline(always)]
     fn update<H: StableHasher>(&self, h: &mut H) {
-        h.update_iter(self.iter());
+        h.update_iter(self.iter(), Some(self.len()));
     }
 }
 

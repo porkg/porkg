@@ -1,54 +1,33 @@
 use std::{future::Future, sync::Arc, time::Duration};
 
+use backend::BuildTask;
 use config::Config;
 use porkg_linux::sandbox::{SandboxController, SandboxProcess};
-use porkg_private::{
-    os::proc::IntoExitCode,
-    sandbox::{SandboxOptions, SandboxTask},
-};
-use serde::{Deserialize, Serialize};
+use porkg_private::os::proc::IntoExitCode;
 use thiserror::Error;
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
+mod backend;
 mod config;
 mod error;
 mod frontend;
 
 #[derive(Clone)]
 struct SetupState {
-    controller: SandboxController<Task>,
+    controller: SandboxController<backend::BuildTask>,
     exit: flume::Sender<Option<anyhow::Error>>,
     config: Arc<Config>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Task;
-
 #[derive(Debug, Error)]
 #[error("tmp")]
-struct Erro;
+pub struct Erro;
 
 impl IntoExitCode for Erro {
     fn report(&self) -> i32 {
         -1
-    }
-}
-
-impl SandboxTask for Task {
-    type ExecuteError = Erro;
-
-    fn create_sandbox_options(&self) -> porkg_private::sandbox::SandboxOptions {
-        SandboxOptions::default()
-    }
-
-    fn execute(
-        &self,
-        _fds: impl AsRef<[std::os::unix::prelude::OwnedFd]>,
-    ) -> Result<(), Self::ExecuteError> {
-        tracing::trace!("running");
-        Ok(())
     }
 }
 
@@ -62,7 +41,7 @@ fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .try_init()?;
 
-    let controller = SandboxProcess::<Task>::start()?;
+    let controller = SandboxProcess::<BuildTask>::start()?;
 
     // cloneing when there are multiple threads is UB, so the above must occur first.
     let runtime = tokio::runtime::Builder::new_multi_thread()

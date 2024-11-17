@@ -27,6 +27,7 @@ hyper-util = { workspace = true, features = ["tokio"] }
 tower-service.workspace = true
 flume.workspace = true
 config.workspace = true
+itertools.workspace = true
 
 [dev-dependencies]
 axum-macros.workspace = true

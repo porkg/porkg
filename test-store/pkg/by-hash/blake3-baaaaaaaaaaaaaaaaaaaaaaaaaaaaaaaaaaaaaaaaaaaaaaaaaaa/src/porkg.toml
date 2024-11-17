@@ -1,0 +1,22 @@
+[porkg]
+name = "test"
+version = "0.1.0"
+description = "test"
+results = ["out"]
+
+[build-dependencies]
+busybox = { name = "busybox", version = "0.1.0", target = "out" }
+
+[dependencies]
+
+[build-phase]
+exec = ["${busybox}/bin/sh", "build.sh"]
+
+[build-phase.env]
+PATH = "${busybox}/bin"
+
+[install-phase]
+exec = ["${busybox}/bin/sh", "build.sh"]
+
+[install-phase.env]
+PATH = "${busybox}/bin"

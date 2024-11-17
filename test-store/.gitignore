@@ -1,1 +1,12 @@
-pkg/
+# Don't include any build artifacts
+
+pkg/by-hash/*/out
+pkg/by-name/*/*/out
+
+# or any linked results
+
+link/
+
+# Or GC roots
+
+root/

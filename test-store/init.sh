@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-out_dir=$script_dir/pkg/busybox/blake3-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/out
+out_dir=$script_dir/pkg/by-hash/blake3-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/out
 
 if [ ! -e "$out_dir/bin/busybox" ]; then
     mkdir -p "$out_dir/bin"
@@ -16,3 +16,6 @@ mkdir -p "$out_dir/bin"
 for exe in ash sh cat chgrp chmod chown cp cut true false echo; do
     ln -sf "./busybox" "$out_dir/bin/$exe"
 done
+
+mkdir -p "$script_dir/pkg/by-name/busybox/blake3-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+ln -sf "$out_dir" "$script_dir/pkg/by-name/busybox/blake3-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/out"
