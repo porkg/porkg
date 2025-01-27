@@ -1,11 +1,12 @@
 use axum::{extract::State, Json};
 use hyper::StatusCode;
 use itertools::Itertools;
+use porkg_linux::sandbox::CreateSandboxError;
 use porkg_model::package::LockDefinition;
 use thiserror::Error;
 
 use crate::{
-    backend::BuildTask,
+    backend::{BuildError, BuildTask},
     error::{ApiError, AppError},
 };
 
@@ -24,8 +25,10 @@ pub enum StartError {
     InvalidHash { hash: String },
     #[error("invalid dependency hash provided for {name}: {hash}")]
     InvalidDependencyHash { name: String, hash: String },
-    #[error("failed to validate the build")]
-    ValidationError { error: String },
+    #[error("failed to build the package: {0}")]
+    BuildError(BuildError),
+    #[error("failed to create the sandbox")]
+    CreateSandboxError,
 }
 
 impl ApiError for StartError {
@@ -44,7 +47,7 @@ impl ApiError for StartError {
 pub async fn post(
     State(state): State<SharedState>,
     Json(req): Json<BuildRequest>,
-) -> Result<String, AppError<StartError>> {
+) -> Result<(), AppError<StartError>> {
     let BuildRequest {
         name,
         hash,
@@ -72,16 +75,21 @@ pub async fn post(
         })
         .try_collect()?;
 
-    let task = BuildTask {
+    let task = BuildTask::try_new(
+        &state.config.store,
         name,
-        hash: hash.parse().map_err(|_| StartError::InvalidHash { hash })?,
+        hash.parse().map_err(|_| StartError::InvalidHash { hash })?,
         dependencies,
         build_dependencies,
-    };
+    )
+    .await
+    .map_err(StartError::BuildError)?;
 
-    task.validate(&state.config.store)
+    state
+        .controller
+        .spawn_async(task, &[])
         .await
-        .map_err(|error| StartError::ValidationError { error })?;
+        .map_err(|_| StartError::CreateSandboxError)?;
 
-    Ok(format!("{:?}", task))
+    Ok(())
 }

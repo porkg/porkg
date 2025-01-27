@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Context as _;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Config {
@@ -54,7 +54,7 @@ impl Default for BindConfig {
     }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StoreConfig {
     #[serde(default = "default_store_path", with = "porkg_private::ser::pathbuf")]
     pub path: PathBuf,

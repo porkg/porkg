@@ -10,6 +10,10 @@ pub struct Package {
     pub dependencies: BTreeMap<String, Dependency>,
     #[serde(rename = "build-dependencies")]
     pub build_dependencies: BTreeMap<String, Dependency>,
+    #[serde(rename = "build-phase")]
+    pub build_phase: Option<Executable>,
+    #[serde(rename = "install-phase")]
+    pub install_phase: Option<Executable>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
