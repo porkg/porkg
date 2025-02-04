@@ -2,38 +2,55 @@ package main
 
 import (
 	"context"
-	"log"
+	"os"
 	"time"
 
-	"github.com/porkg/porkg/internal/zygote"
+	"github.com/porkg/porkg/internal/worker"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	worker.Reenter()
+
 	ctx := context.Background()
 
-	zygote, err := zygote.Spawn()
+	config := worker.WorkerConfig{}
+
+	worker, err := worker.New(config)
 	if err != nil {
-		log.Fatalf("Zygote failure: %v", err)
+		log.Fatal().
+			Err(err).
+			Msg("worker failure")
 	}
 
-	if zygote == nil {
-		log.Println("Zygote exiting")
-		return
-	}
-
-	log.Println("Zygote spawned")
+	log.Info().
+		Msg("worker started")
 
 	defer func() {
 		to, term := context.WithTimeout(ctx, time.Duration(time.Second*5))
 		defer term()
 
-		_, err := zygote.Close(&to)
+		_, err := worker.Close(&to)
 		if err != nil {
-			log.Printf("Zygote failed: %v", err)
+			log.Info().Err(err).Msg("worker failed")
 		}
 	}()
 
+	job, err := worker.Start(&ctx)
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Msg("failed to start job")
+	}
+	log.Info().
+		Msg("started job")
+
+	job.Close()
+
 	to, term := context.WithTimeout(ctx, time.Duration(time.Second*5))
 	defer term()
-	zygote.Wait(&to)
+	worker.Wait(&to)
 }
